@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
   initializeTrustData, 
   simulatePayment, 
@@ -8,6 +8,7 @@ import {
   getTrustData
 } from '../lib/trust-data'
 import { TenancyRecord } from '../lib/trust-types'
+import { updateNFTWithTrustData } from '../lib/nft-trust-update'
 
 interface TrustDemoActionsProps {
   userAddress: string
@@ -17,11 +18,23 @@ interface TrustDemoActionsProps {
 export default function TrustDemoActions({ userAddress, onDataUpdated }: TrustDemoActionsProps) {
   const [loading, setLoading] = useState(false)
   const [showDemo, setShowDemo] = useState(false)
+  const [lastAction, setLastAction] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (lastAction) {
+      const timer = setTimeout(() => {
+        setLastAction(null)
+      }, 3000) // Clear feedback after 3 seconds
+      
+      return () => clearTimeout(timer)
+    }
+  }, [lastAction])
 
   const handleInitializeTrustData = async (userType: 'tenant' | 'landlord' | 'both') => {
     setLoading(true)
     try {
       initializeTrustData(userAddress, userType)
+      await updateNFTWithTrustData(userAddress)
       onDataUpdated()
     } catch (error) {
       console.error('Error initializing trust data:', error)
@@ -38,6 +51,8 @@ export default function TrustDemoActions({ userAddress, onDataUpdated }: TrustDe
       const amountWei = (BigInt(Math.floor(parseFloat(amount) * 1e18))).toString()
       
       simulatePayment(userAddress, propertyId, amountWei, isOnTime)
+      await updateNFTWithTrustData(userAddress)
+      setLastAction(`Payment simulated (${isOnTime ? 'on-time' : 'late'}) and NFT updated!`)
       onDataUpdated()
     } catch (error) {
       console.error('Error simulating payment:', error)
@@ -64,6 +79,7 @@ export default function TrustDemoActions({ userAddress, onDataUpdated }: TrustDe
       }
       
       addTenancyRecord(userAddress, tenancyRecord)
+      await updateNFTWithTrustData(userAddress)
       onDataUpdated()
     } catch (error) {
       console.error('Error adding tenancy record:', error)
@@ -84,6 +100,7 @@ export default function TrustDemoActions({ userAddress, onDataUpdated }: TrustDe
         updateLandlordScore(userAddress, scoreType as any, value)
       }
       
+      await updateNFTWithTrustData(userAddress)
       onDataUpdated()
     } catch (error) {
       console.error('Error updating score:', error)
@@ -148,9 +165,17 @@ export default function TrustDemoActions({ userAddress, onDataUpdated }: TrustDe
 
       {showDemo && (
         <div className="space-y-6">
+          {lastAction && (
+            <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg border border-green-200 dark:border-green-500/20">
+              <p className="text-sm text-green-700 dark:text-green-300">
+                ✅ {lastAction}
+              </p>
+            </div>
+          )}
+          
           <div className="p-4 bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/20">
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              ⚠️ <strong>Demo Mode:</strong> These actions simulate real-world scenarios to show how trust scores work. 
+              ⚠️ <strong>Demo Mode:</strong> These actions simulate real-world scenarios and update your NFT metadata with new trust data. 
               In production, these would be triggered by actual rental transactions and smart contract interactions.
             </p>
           </div>

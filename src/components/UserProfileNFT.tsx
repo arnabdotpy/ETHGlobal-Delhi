@@ -1,5 +1,6 @@
 import React from 'react'
 import { UserNFTData } from '../lib/hedera'
+import { getTrustScoreColor, getTrustScoreLabel } from '../lib/nft-trust-update'
 
 interface UserProfileNFTProps {
   nftData: UserNFTData
@@ -53,12 +54,41 @@ export default function UserProfileNFT({ nftData, userAddress }: UserProfileNFTP
       
       <div className="mt-4 pt-3 border-t border-neutral-700">
         <div className="flex flex-wrap gap-2">
-          {nftData.metadata.attributes.map((attr: any, index: number) => (
-            <div key={index} className="bg-neutral-800 px-2 py-1 rounded text-xs">
-              <span className="text-neutral-400">{attr.trait_type}:</span>
-              <span className="ml-1 text-neutral-200">{attr.value}</span>
-            </div>
-          ))}
+          {nftData.metadata.attributes.map((attr: any, index: number) => {
+            // Special styling for trust scores
+            const isTrustScore = attr.trait_type.includes('Trust Score')
+            const isPercentage = attr.trait_type.includes('%') || attr.trait_type.includes('Percentage')
+            const isScore = attr.trait_type.includes('Score') && !isTrustScore
+            
+            let valueColor = 'text-neutral-200'
+            let bgColor = 'bg-neutral-800'
+            
+            if (isTrustScore) {
+              const maxScore = attr.trait_type.includes('Tenant') ? 850 : 100
+              valueColor = getTrustScoreColor(parseInt(attr.value), maxScore)
+              bgColor = 'bg-gradient-to-r from-blue-900/40 to-purple-900/40 border border-blue-500/30'
+            } else if (isPercentage && parseInt(attr.value) >= 90) {
+              valueColor = 'text-green-400'
+              bgColor = 'bg-green-900/20 border border-green-500/30'
+            } else if (isScore && parseInt(attr.value) >= 80) {
+              valueColor = 'text-blue-400'
+              bgColor = 'bg-blue-900/20 border border-blue-500/30'
+            }
+            
+            return (
+              <div key={index} className={`${bgColor} px-2 py-1 rounded text-xs`}>
+                <span className="text-neutral-400">{attr.trait_type}:</span>
+                <span className={`ml-1 font-semibold ${valueColor}`}>
+                  {attr.value}
+                  {isTrustScore && (
+                    <span className="ml-1 text-xs text-neutral-500">
+                      ({getTrustScoreLabel(parseInt(attr.value), attr.trait_type.includes('Tenant') ? 850 : 100)})
+                    </span>
+                  )}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
