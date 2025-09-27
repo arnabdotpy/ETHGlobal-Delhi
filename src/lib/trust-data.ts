@@ -110,13 +110,21 @@ export function addPaymentRecord(
   paymentRecord: PaymentRecord
 ): void {
   const trustData = getTrustData(userAddress)
-  if (!trustData || !trustData.tenantData) return
+  if (!trustData || !trustData.tenantData) {
+    console.log('No trust data or tenant data found for user:', userAddress)
+    return
+  }
+  
+  // Ensure arrays are initialized
+  if (!trustData.tenantData.monthlyPaymentRecords) {
+    trustData.tenantData.monthlyPaymentRecords = []
+  }
   
   // Add the payment record
   trustData.tenantData.monthlyPaymentRecords.push(paymentRecord)
   
-  // Update total rent paid
-  const currentTotal = BigInt(trustData.tenantData.totalRentPaid)
+  // Update total rent paid safely
+  const currentTotal = BigInt(trustData.tenantData.totalRentPaid || '0')
   trustData.tenantData.totalRentPaid = (currentTotal + BigInt(paymentRecord.amount)).toString()
   
   // Recalculate metrics

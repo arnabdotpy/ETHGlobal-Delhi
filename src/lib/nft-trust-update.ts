@@ -5,19 +5,29 @@ import { getUserNFT } from './hedera'
 // and use this for display purposes
 export async function updateNFTWithTrustData(userAddress: string): Promise<void> {
   try {
+    if (!userAddress) {
+      console.log('No user address provided')
+      return
+    }
+
     const trustData = getTrustData(userAddress)
     const nftData = await getUserNFT(userAddress)
     
-    if (!trustData || !nftData) {
-      console.log('No trust data or NFT data found for user')
+    if (!trustData) {
+      console.log('No trust data found for user:', userAddress)
+      return
+    }
+    
+    if (!nftData) {
+      console.log('No NFT data found for user:', userAddress)
       return
     }
     
     // Create updated metadata with trust scores
     const updatedMetadata = {
-      name: nftData.metadata.name || `User ${userAddress.slice(0, 6)}`,
+      name: nftData.metadata?.name || `User ${userAddress.slice(0, 6)}`,
       description: "Briq user profile with trust scores",
-      image: nftData.metadata.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${userAddress}`,
+      image: nftData.metadata?.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${userAddress}`,
       attributes: [
         {
           trait_type: "Platform",
@@ -34,37 +44,37 @@ export async function updateNFTWithTrustData(userAddress: string): Promise<void>
         ...(trustData.tenantData ? [
           {
             trait_type: "Tenant Trust Score",
-            value: trustData.tenantData.trustScore.toString()
+            value: (trustData.tenantData.trustScore ?? 0).toString()
           },
           {
             trait_type: "On-Time Payment %",
-            value: trustData.tenantData.onTimePaymentPercentage.toString()
+            value: (trustData.tenantData.onTimePaymentPercentage ?? 0).toString()
           },
           {
             trait_type: "Total Payments",
-            value: trustData.tenantData.monthlyPaymentRecords.length.toString()
+            value: (trustData.tenantData.monthlyPaymentRecords?.length ?? 0).toString()
           },
           {
             trait_type: "Property Care Score",
-            value: trustData.tenantData.propertyMaintenanceScore.toString()
+            value: (trustData.tenantData.propertyMaintenanceScore ?? 0).toString()
           }
         ] : []),
         ...(trustData.landlordData ? [
           {
             trait_type: "Landlord Trust Score",
-            value: trustData.landlordData.trustScore.toString()
+            value: (trustData.landlordData.trustScore ?? 0).toString()
           },
           {
             trait_type: "Properties Managed",
-            value: trustData.landlordData.propertiesManaged.length.toString()
+            value: (trustData.landlordData.propertiesManaged?.length ?? 0).toString()
           },
           {
             trait_type: "Communication Score",
-            value: trustData.landlordData.communicationScore.toString()
+            value: (trustData.landlordData.communicationScore ?? 0).toString()
           },
           {
             trait_type: "Fairness Score",
-            value: trustData.landlordData.fairnessScore.toString()
+            value: (trustData.landlordData.fairnessScore ?? 0).toString()
           }
         ] : []),
         {
@@ -88,6 +98,16 @@ export async function updateNFTWithTrustData(userAddress: string): Promise<void>
     
   } catch (error) {
     console.error('Error updating NFT with trust data:', error)
+    console.error('UserAddress:', userAddress)
+    console.error('TrustData:', getTrustData(userAddress))
+    
+    // Try to get NFT data for debugging
+    try {
+      const nftData = await getUserNFT(userAddress)
+      console.error('NFTData:', nftData)
+    } catch (nftError) {
+      console.error('Error getting NFT data:', nftError)
+    }
   }
 }
 

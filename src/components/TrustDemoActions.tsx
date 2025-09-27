@@ -46,6 +46,16 @@ export default function TrustDemoActions({ userAddress, onDataUpdated }: TrustDe
   const handleSimulatePayment = async (isOnTime: boolean) => {
     setLoading(true)
     try {
+      // Ensure trust data exists before simulating payment
+      const { getTrustData, initializeTrustData } = await import('../lib/trust-data')
+      const { getUserRole } = await import('../lib/user-role')
+      
+      let trustData = getTrustData(userAddress)
+      if (!trustData) {
+        const userRole = getUserRole(userAddress) || 'tenant'
+        trustData = initializeTrustData(userAddress, userRole)
+      }
+      
       const propertyId = 'demo-property-1'
       const amount = (Math.random() * 2 + 0.5).toFixed(4) // Random amount between 0.5-2.5 ETH
       const amountWei = (BigInt(Math.floor(parseFloat(amount) * 1e18))).toString()
