@@ -6,10 +6,12 @@ import TrustScoreDisplay from '../components/TrustScoreDisplay'
 import TrustOnboarding from '../components/TrustOnboarding'
 import TrustDemoActions from '../components/TrustDemoActions'
 import HederaDebugPanel from '../components/HederaDebugPanel'
+import { getUserRole, UserRole } from '../lib/user-role'
 
 export default function Trust() {
   const [userAddress, setUserAddress] = useState<string | null>(null)
   const [trustData, setTrustData] = useState<ComprehensiveTrustData | null>(null)
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const loadTrustData = async () => {
@@ -18,10 +20,22 @@ export default function Trust() {
       setUserAddress(address)
       
       if (address) {
+        // Get user role from the role system
+        const role = getUserRole(address)
+        setUserRole(role)
+        
         const trust = getTrustData(address)
         setTrustData(trust)
+        
+        // If user has a role but no trust data, create trust data based on role
+        if (role && !trust) {
+          const { initializeTrustData } = await import('../lib/trust-data')
+          const newTrustData = initializeTrustData(address, role)
+          setTrustData(newTrustData)
+        }
       } else {
         setTrustData(null)
+        setUserRole(null)
       }
     } catch (error) {
       console.error('Error loading trust data:', error)
@@ -81,11 +95,33 @@ export default function Trust() {
             onDataUpdated={loadTrustData}
           />
         </>
+      ) : userRole ? (
+        /* User has role but no trust data - create it automatically */
+        <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/20 p-8 text-center">
+          <div className="text-4xl mb-4">⚡</div>
+          <h2 className="text-xl font-semibold mb-2">Setting up your Trust Profile</h2>
+          <p className="text-blue-700 dark:text-blue-300 mb-4">
+            Based on your role as a <span className="font-semibold capitalize">{userRole}</span>, 
+            we're initializing your trust profile...
+          </p>
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        </div>
       ) : (
-        <TrustOnboarding 
-          userAddress={userAddress} 
-          onComplete={loadTrustData}
-        />
+        /* User has no role - show onboarding */
+        <div className="bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/20 p-8 text-center">
+          <div className="text-4xl mb-4">🏠</div>
+          <h2 className="text-xl font-semibold mb-2">Complete Your Profile Setup</h2>
+          <p className="text-amber-700 dark:text-amber-300 mb-4">
+            Please go back to the Home page to select your role (Tenant or Landlord) before setting up your trust profile.
+          </p>
+          <a
+            href="/"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+          >
+            <span>←</span>
+            Go to Home Page
+          </a>
+        </div>
       )}
     </div>
   )

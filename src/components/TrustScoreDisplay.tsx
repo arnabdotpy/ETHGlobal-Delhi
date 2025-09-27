@@ -6,9 +6,8 @@ interface TrustScoreDisplayProps {
 }
 
 export default function TrustScoreDisplay({ trustData }: TrustScoreDisplayProps) {
-  const [activeTab, setActiveTab] = useState<'tenant' | 'landlord'>(
-    trustData.userType === 'landlord' ? 'landlord' : 'tenant'
-  )
+  // Use the actual user type from trust data, no switching allowed
+  const activeTab = trustData.userType === 'landlord' ? 'landlord' : 'tenant'
 
   const formatScore = (score: number, maxScore: number = 100) => {
     const percentage = (score / maxScore) * 100
@@ -63,31 +62,12 @@ export default function TrustScoreDisplay({ trustData }: TrustScoreDisplayProps)
           </div>
         </div>
         
-        {/* Tab Navigation */}
-        {trustData.userType === 'both' && (
-          <div className="flex gap-2 mt-6">
-            <button
-              onClick={() => setActiveTab('tenant')}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                activeTab === 'tenant' 
-                  ? 'bg-white/20 text-white' 
-                  : 'bg-white/10 text-blue-200 hover:bg-white/15'
-              }`}
-            >
-              👤 Tenant Profile
-            </button>
-            <button
-              onClick={() => setActiveTab('landlord')}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                activeTab === 'landlord' 
-                  ? 'bg-white/20 text-white' 
-                  : 'bg-white/10 text-purple-200 hover:bg-white/15'
-              }`}
-            >
-              🏢 Landlord Profile
-            </button>
+        {/* Profile Type Indicator */}
+        <div className="flex justify-center mt-6">
+          <div className="px-4 py-2 bg-white/20 text-white rounded-lg">
+            {activeTab === 'tenant' ? '👤 Tenant Profile' : '🏢 Landlord Profile'}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Main Content */}
