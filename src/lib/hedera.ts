@@ -6,12 +6,43 @@ import {
   TokenType,
   TokenMintTransaction,
   TokenAssociateTransaction,
-  TransferTransaction
+  TransferTransaction,
+  AccountBalanceQuery,
+  AccountInfoQuery,
+  Hbar
 } from '@hashgraph/sdk'
 
 // Hedera configuration
 const MY_ACCOUNT_ID = AccountId.fromString(import.meta.env.VITE_HEDERA_ACCOUNT_ID || "0.0.6914602")
-const MY_PRIVATE_KEY = PrivateKey.fromStringED25519(import.meta.env.VITE_HEDERA_PRIVATE_KEY || "df36cca4c74d003cf80aae0b9ebc47247c4a608e7cfd296a6c4c9622fc4256c3")
+
+// Try to parse the private key - it could be either ED25519 or ECDSA format
+let MY_PRIVATE_KEY: PrivateKey
+const privateKeyStr = import.meta.env.VITE_HEDERA_PRIVATE_KEY || "df36cca4c74d003cf80aae0b9ebc47247c4a608e7cfd296a6c4c9622fc4256c3"
+
+console.log('Parsing private key, length:', privateKeyStr.length)
+
+try {
+  // First try ED25519 format (most common for Hedera)
+  MY_PRIVATE_KEY = PrivateKey.fromStringED25519(privateKeyStr)
+  console.log('Successfully parsed private key as ED25519')
+} catch (error) {
+  console.log('ED25519 parsing failed, trying ECDSA...')
+  try {
+    // Fallback to ECDSA format
+    MY_PRIVATE_KEY = PrivateKey.fromStringECDSA(privateKeyStr)
+    console.log('Successfully parsed private key as ECDSA')
+  } catch (error2) {
+    console.log('ECDSA parsing failed, trying generic fromString...')
+    try {
+      // Fallback to general fromString method
+      MY_PRIVATE_KEY = PrivateKey.fromString(privateKeyStr)
+      console.log('Successfully parsed private key with generic method')
+    } catch (error3) {
+      console.error('All private key parsing methods failed:', { error, error2, error3 })
+      throw new Error('Invalid private key format. Please check your VITE_HEDERA_PRIVATE_KEY environment variable.')
+    }
+  }
+}
 
 let client: Client | null = null
 
@@ -19,8 +50,62 @@ function getClient(): Client {
   if (!client) {
     client = Client.forTestnet()
     client.setOperator(MY_ACCOUNT_ID, MY_PRIVATE_KEY)
+    
+    // Set default max transaction fee and max query cost
+    client.setDefaultMaxTransactionFee(new Hbar(100))
+    client.setDefaultMaxQueryPayment(new Hbar(50))
   }
   return client
+}
+
+// Debug function to check account setup
+export async function debugAccountSetup(): Promise<void> {
+  try {
+    const client = getClient()
+    
+    console.log('=== Hedera Account Debug ===')
+    console.log('Account ID:', MY_ACCOUNT_ID.toString())
+    console.log('Private Key Type:', MY_PRIVATE_KEY.constructor.name)
+    console.log('Private Key (first 10 chars):', privateKeyStr.substring(0, 10) + '...')
+    
+    // Get the public key from private key
+    const publicKey = MY_PRIVATE_KEY.publicKey
+    console.log('Derived Public Key:', publicKey.toString())
+    
+    // Check account balance
+    const balance = await new AccountBalanceQuery()
+      .setAccountId(MY_ACCOUNT_ID)
+      .execute(client)
+    
+    console.log('Account Balance:', balance.hbars.toString())
+    
+    // Check account info
+    const accountInfo = await new AccountInfoQuery()
+      .setAccountId(MY_ACCOUNT_ID)
+      .execute(client)
+      
+    console.log('Account Key from Network:', accountInfo.key?.toString())
+    console.log('Keys Match:', accountInfo.key?.toString() === publicKey.toString())
+    console.log('Account is deleted:', accountInfo.isDeleted)
+    
+    // This is the critical check - if keys don't match, we have the wrong private key
+    if (accountInfo.key?.toString() !== publicKey.toString()) {
+      throw new Error('CRITICAL: Private key does not match the account key on Hedera network. This will cause INVALID_SIGNATURE errors.')
+    }
+    
+    console.log('===========================')
+    
+    // Check if balance is sufficient
+    if (balance.hbars.toTinybars().toNumber() < 5 * 100000000) {
+      throw new Error('Insufficient HBAR balance. Need at least 5 HBAR for NFT operations.')
+    }
+    
+    console.log('✅ Account setup validation passed!')
+    
+  } catch (error) {
+    console.error('Account setup debug failed:', error)
+    throw error
+  }
 }
 
 export interface TokenCreationResult {
@@ -100,21 +185,36 @@ export async function createNFTToken(
   const client = getClient()
   
   try {
-    // Create the transaction and freeze for manual signing
-    const txTokenCreate = await new TokenCreateTransaction()
+    console.log('Creating NFT token with account:', MY_ACCOUNT_ID.toString())
+    console.log('Token name:', tokenName, 'Symbol:', tokenSymbol)
+    
+    // Validate keys first
+    const publicKey = MY_PRIVATE_KEY.publicKey
+    console.log('Using public key:', publicKey.toString())
+    
+    // Create the transaction with minimal keys (only what's necessary)
+    const txTokenCreate = new TokenCreateTransaction()
       .setTokenName(tokenName)
       .setTokenSymbol(tokenSymbol)
       .setTokenType(TokenType.NonFungibleUnique)
       .setTreasuryAccountId(MY_ACCOUNT_ID)
-      .setSupplyKey(MY_PRIVATE_KEY)
-      .setMetadataKey(MY_PRIVATE_KEY)
-      .freezeWith(client)
+      .setSupplyKey(publicKey) // Use public key instead of private key
+      .setMaxTransactionFee(new Hbar(30)) // Increase fee limit
 
-    // Sign the transaction with the token treasury account private key
-    const signTxTokenCreate = await txTokenCreate.sign(MY_PRIVATE_KEY)
-
-    // Sign the transaction with the client operator private key and submit to a Hedera network
-    const txTokenCreateResponse = await signTxTokenCreate.execute(client)
+    console.log('Transaction created, freezing...')
+    
+    // Freeze with client first
+    const frozenTx = await txTokenCreate.freezeWith(client)
+    
+    console.log('Transaction frozen, signing...')
+    
+    // Sign explicitly
+    const signedTx = await frozenTx.sign(MY_PRIVATE_KEY)
+    
+    console.log('Transaction signed, executing...')
+    
+    // Execute the signed transaction
+    const txTokenCreateResponse = await signedTx.execute(client)
 
     // Get the receipt of the transaction
     const receiptTokenCreateTx = await txTokenCreateResponse.getReceipt(client)
@@ -155,56 +255,39 @@ export async function mintUserNFT(
   const client = getClient()
   
   try {
-    // Create compact NFT metadata (reduced size to avoid METADATA_TOO_LONG error)
-    const metadata = {
-      name: userName.length > 20 ? userName.substring(0, 20) + "..." : userName,
-      description: "Briq user profile",
-      image: `https://api.dicebear.com/7.x/identicon/svg?seed=${userAddress}`,
-      attributes: [
-        {
-          trait_type: "Platform",
-          value: "Briq"
-        },
-        {
-          trait_type: "Type",
-          value: "User"
-        },
-        {
-          trait_type: "Address",
-          value: `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`
-        }
-      ]
-    }
+    console.log('Starting NFT mint process...')
+    console.log('Token ID:', tokenId)
+    console.log('User Address:', userAddress)
+    console.log('User Name:', userName)
+    console.log('Account ID:', MY_ACCOUNT_ID.toString())
+    console.log('Private Key valid:', !!MY_PRIVATE_KEY)
 
-    // Try with minimal metadata first, fallback to no metadata if it fails
-    let txMint
+    // Create minimal metadata to avoid size issues
+    const minimalMetadata = userName.substring(0, 6) // Very small - just 6 chars
+    const metadataBytes = new TextEncoder().encode(minimalMetadata)
     
-    try {
-      // Attempt with very minimal metadata (just first few chars of name)
-      const minimalMetadata = userName.substring(0, 8) // Even smaller - just 8 chars
-      const metadataBytes = new TextEncoder().encode(minimalMetadata)
-      
-      console.log('Attempting NFT creation with minimal metadata:', minimalMetadata, 'Size:', metadataBytes.length, 'bytes')
-      
-      txMint = await new TokenMintTransaction()
-        .setTokenId(tokenId)
-        .setMetadata([metadataBytes])
-        .freezeWith(client)
-        
-    } catch (metadataError) {
-      console.log('Minimal metadata failed, creating NFT without metadata')
-      
-      // Fallback: Create NFT without any metadata
-      txMint = await new TokenMintTransaction()
-        .setTokenId(tokenId)
-        .freezeWith(client)
-    }
+    console.log('Metadata:', minimalMetadata, 'Size:', metadataBytes.length, 'bytes')
 
-    // Sign the transaction with the supply key
-    const signTxMint = await txMint.sign(MY_PRIVATE_KEY)
-
-    // Submit the transaction to a Hedera network
-    const txMintResponse = await signTxMint.execute(client)
+    // Create the mint transaction
+    const txMint = new TokenMintTransaction()
+      .setTokenId(tokenId)
+      .setMetadata([metadataBytes])
+      .setMaxTransactionFee(new Hbar(30)) // Increase fee limit
+    
+    console.log('Freezing mint transaction...')
+    
+    // Freeze the transaction with the client
+    const frozenTxMint = await txMint.freezeWith(client)
+    
+    console.log('Signing mint transaction...')
+    
+    // Sign the transaction explicitly
+    const signedTxMint = await frozenTxMint.sign(MY_PRIVATE_KEY)
+    
+    console.log('Executing signed mint transaction...')
+    
+    // Execute the signed transaction
+    const txMintResponse = await signedTxMint.execute(client)
 
     // Get the receipt of the transaction
     const receiptMintTx = await txMintResponse.getReceipt(client)
@@ -260,6 +343,9 @@ export async function getUserNFT(userAddress: string): Promise<UserNFTData | nul
 export async function createUserNFT(userAddress: string, userName?: string): Promise<UserNFTData> {
   try {
     console.log('Creating NFT for user:', userAddress, 'Name:', userName)
+    
+    // Debug account setup first
+    await debugAccountSetup()
     
     // First create the NFT token collection if needed
     let nftTokenId = localStorage.getItem('briq_nft_token_id')

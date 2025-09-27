@@ -1,92 +1,91 @@
 import React, { useEffect, useState } from 'react'
-import { getReadContracts } from '../lib/contracts'
 import { currentAddress } from '../lib/eth'
+import { getTrustData } from '../lib/trust-data'
+import { ComprehensiveTrustData } from '../lib/trust-types'
+import TrustScoreDisplay from '../components/TrustScoreDisplay'
+import TrustOnboarding from '../components/TrustOnboarding'
+import TrustDemoActions from '../components/TrustDemoActions'
+import HederaDebugPanel from '../components/HederaDebugPanel'
 
 export default function Trust() {
-  const [tokenId, setTokenId] = useState<string | null>(null)
-  const [uri, setUri] = useState<string | null>(null)
-  const [meta, setMeta] = useState<any>(null)
   const [userAddress, setUserAddress] = useState<string | null>(null)
+  const [trustData, setTrustData] = useState<ComprehensiveTrustData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const loadTrustData = async () => {
+    try {
+      const address = await currentAddress()
+      setUserAddress(address)
+      
+      if (address) {
+        const trust = getTrustData(address)
+        setTrustData(trust)
+      } else {
+        setTrustData(null)
+      }
+    } catch (error) {
+      console.error('Error loading trust data:', error)
+      setTrustData(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const checkSBT = async () => {
-      try {
-        const address = await currentAddress()
-        setUserAddress(address)
-        
-        if (!address) {
-          setTokenId(null)
-          setUri(null)
-          setMeta(null)
-          return
-        }
-
-        const { sbt } = getReadContracts()
-        const tid = await sbt.tokenOfOwnerOrZero(address)
-        if (tid && tid > 0n) {
-          setTokenId(tid.toString())
-          const u = await sbt.tokenURI(tid)
-          setUri(u)
-          // best-effort fetch
-          if (u.startsWith('data:application/json')) {
-            const payload = decodeURIComponent(u.split(',')[1])
-            setMeta(JSON.parse(payload))
-          } else if (u.startsWith('data:')) {
-            const raw = atob(u.split(',')[1])
-            setMeta(JSON.parse(raw))
-          } else {
-            fetch(u).then(r=>r.json()).then(setMeta).catch(()=>{})
-          }
-        } else {
-          setTokenId(null)
-          setUri(null)
-          setMeta(null)
-        }
-      } catch (e) { 
-        console.error(e)
-        setTokenId(null)
-        setUri(null)
-        setMeta(null)
-      }
-    }
-
-    checkSBT()
+    loadTrustData()
     
-    // Set up interval to check wallet connection and SBT periodically
-    const interval = setInterval(checkSBT, 5000)
-    
+    // Refresh data periodically
+    const interval = setInterval(loadTrustData, 10000)
     return () => clearInterval(interval)
   }, [])
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading trust profile...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!userAddress) {
+    return (
+      <div className="max-w-md mx-auto mt-16">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+          <div className="text-4xl mb-4">🔗</div>
+          <h2 className="text-xl font-semibold mb-2">Connect Your Wallet</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Please connect your wallet to view your trust profile and build your rental reputation.
+          </p>
+          <div className="p-4 bg-blue-50 dark:bg-blue-500/10 rounded-lg border border-blue-200 dark:border-blue-500/20">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              💡 Your trust profile helps you get better rental opportunities by building credibility through verified rental history.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="text-lg font-semibold">Trust (Your Reputation SBT)</div>
-      {!userAddress ? (
-        <div className="text-amber-400 bg-amber-900/20 border border-amber-500/30 px-4 py-3 rounded-lg">
-          Please connect your wallet to view your reputation SBT
-        </div>
-      ) : tokenId ? (
-        <div className="p-4 bg-neutral-900 rounded-lg border border-neutral-800">
-          <div className="text-sm opacity-70">Token ID: {tokenId}</div>
-          <div className="text-sm break-words opacity-70">tokenURI: {uri}</div>
-          {meta && (
-            <div className="mt-4 grid gap-2">
-              <div className="text-xl font-semibold">{meta.name}</div>
-              <div className="opacity-80">{meta.description}</div>
-              <div className="grid grid-cols-2 gap-2">
-                {(meta.attributes || []).map((a: any, i: number)=>(
-                  <div key={i} className="p-2 rounded bg-neutral-800">
-                    <div className="text-xs opacity-70">{a.trait_type}</div>
-                    <div className="text-sm">{a.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {!meta && <div className="opacity-70">Loading metadata…</div>}
-        </div>
+    <div className="container mx-auto px-4 py-8 space-y-8">
+      <HederaDebugPanel />
+      
+      {trustData ? (
+        <>
+          <TrustScoreDisplay trustData={trustData} />
+          <TrustDemoActions 
+            userAddress={userAddress} 
+            onDataUpdated={loadTrustData}
+          />
+        </>
       ) : (
-        <div className="opacity-70">No SBT found for your wallet.</div>
+        <TrustOnboarding 
+          userAddress={userAddress} 
+          onComplete={loadTrustData}
+        />
       )}
     </div>
   )

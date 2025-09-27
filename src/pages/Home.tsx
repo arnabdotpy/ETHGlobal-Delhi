@@ -3,7 +3,9 @@ import { getReadContracts, getWriteContracts } from '../lib/contracts'
 import { currentAddress } from '../lib/eth'
 import { UserNFTData } from '../lib/hedera'
 import UserProfileNFT from '../components/UserProfileNFT'
+import TrustWidget from '../components/TrustWidget'
 import { getRandomSample } from '../lib/sample-data'
+import { getTrustData } from '../lib/trust-data'
 
 // Utility functions for HBAR conversion
 const weiToHbar = (wei: bigint): string => {
@@ -160,7 +162,32 @@ export default function Home({ userNFT, userAddress }: HomeProps) {
       const { hub } = await getWriteContracts()
       const tx = await hub.rent(id, { value: deposit })
       await tx.wait()
-      refresh()
+      
+        // Record this as a payment in the trust system
+        if (userAddress) {
+          const { addPaymentRecord, getTrustData, initializeTrustData } = await import('../lib/trust-data')
+          
+          // Ensure user has trust data (initialize as tenant if needed)
+          let trustData = getTrustData(userAddress)
+          if (!trustData) {
+            trustData = initializeTrustData(userAddress, 'tenant')
+          }
+          
+          // Create payment record
+          const now = Date.now()
+          const paymentRecord = {
+            amount: deposit.toString(),
+            dueDate: now, // Immediate payment for initial rental
+            paidDate: now,
+            status: 'on-time' as const,
+            lateDays: 0,
+            propertyId: id.toString(),
+            transactionHash: tx.hash
+          }
+          
+          addPaymentRecord(userAddress, paymentRecord)
+        }      refresh()
+      alert('Property rented successfully! Payment recorded in your trust profile.')
     } catch (e: any) { 
       console.error('Error renting property:', e)
       alert('Failed to rent property: ' + (e.message || 'Unknown error'))
@@ -190,54 +217,109 @@ export default function Home({ userNFT, userAddress }: HomeProps) {
         <UserProfileNFT nftData={userNFT} userAddress={userAddress} />
       )}
       
+      {/* Trust Score Widget */}
+      {userAddress && (
+        <TrustWidget userAddress={userAddress} />
+      )}
+      
       {/* Landlord Trust Modal */}
-      {selectedLandlord && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Landlord Trust Score</h2>
-              <button 
-                onClick={() => setSelectedLandlord(null)}
-                className="text-neutral-400 hover:text-white text-xl"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="text-3xl mb-2">🏆</div>
-                <div className="text-sm text-neutral-400 mb-2">Address</div>
-                <div className="font-mono text-sm bg-neutral-800 p-2 rounded">
-                  {selectedLandlord}
-                </div>
+      {selectedLandlord && (() => {
+        const landlordTrust = getTrustData(selectedLandlord)
+        const propertiesListed = listings.filter(l => l.landlord === selectedLandlord).length
+        const activeRentals = listings.filter(l => l.landlord === selectedLandlord && l.tenant !== '0x0000000000000000000000000000000000000000').length
+        
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-6 w-full max-w-md">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Landlord Trust Profile</h2>
+                <button 
+                  onClick={() => setSelectedLandlord(null)}
+                  className="text-neutral-400 hover:text-white text-xl"
+                >
+                  ×
+                </button>
               </div>
               
-              <div className="bg-neutral-800 p-4 rounded-lg">
-                <h3 className="font-semibold mb-3">Trust Metrics</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Properties Listed:</span>
-                    <span className="text-green-400">{listings.filter(l => l.landlord === selectedLandlord).length}</span>
+              <div className="space-y-4">
+                <div className="text-center">
+                  <div className="text-3xl mb-2">
+                    {landlordTrust?.landlordData ? '🏆' : '❓'}
                   </div>
-                  <div className="flex justify-between">
-                    <span>Active Rentals:</span>
-                    <span className="text-blue-400">{listings.filter(l => l.landlord === selectedLandlord && l.tenant !== '0x0000000000000000000000000000000000000000').length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Trust Score:</span>
-                    <span className="text-yellow-400">⭐⭐⭐⭐⭐</span>
+                  <div className="text-sm text-neutral-400 mb-2">Address</div>
+                  <div className="font-mono text-sm bg-neutral-800 p-2 rounded">
+                    {selectedLandlord}
                   </div>
                 </div>
-              </div>
-              
-              <div className="text-xs text-neutral-400 text-center">
-                Trust scores are calculated based on rental history and user feedback
+                
+                {landlordTrust?.landlordData ? (
+                  <div className="bg-neutral-800 p-4 rounded-lg">
+                    <h3 className="font-semibold mb-3">Trust Score</h3>
+                    <div className="text-center mb-4">
+                      <div className={`text-3xl font-bold ${
+                        landlordTrust.landlordData.trustScore >= 90 ? 'text-green-400' :
+                        landlordTrust.landlordData.trustScore >= 75 ? 'text-yellow-400' :
+                        landlordTrust.landlordData.trustScore >= 60 ? 'text-orange-400' : 'text-red-400'
+                      }`}>
+                        {landlordTrust.landlordData.trustScore}/100
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        {landlordTrust.landlordData.trustScore >= 90 ? 'Excellent' :
+                         landlordTrust.landlordData.trustScore >= 75 ? 'Good' :
+                         landlordTrust.landlordData.trustScore >= 60 ? 'Fair' : 'Poor'}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Fairness Score:</span>
+                        <span className="text-blue-400">{landlordTrust.landlordData.fairnessScore}/100</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Communication:</span>
+                        <span className="text-green-400">{landlordTrust.landlordData.communicationScore}/100</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>License Status:</span>
+                        <span className={`capitalize ${
+                          landlordTrust.landlordData.licenseStatus === 'active' ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {landlordTrust.landlordData.licenseStatus}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-neutral-800 p-4 rounded-lg">
+                    <h3 className="font-semibold mb-3">Basic Metrics</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Properties Listed:</span>
+                        <span className="text-green-400">{propertiesListed}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Active Rentals:</span>
+                        <span className="text-blue-400">{activeRentals}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Trust Profile:</span>
+                        <span className="text-gray-400">Not initialized</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="text-xs text-neutral-400 text-center">
+                  {landlordTrust?.landlordData 
+                    ? 'Trust score based on verified rental history and tenant feedback'
+                    : 'Landlord has not set up a trust profile yet'
+                  }
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       <form onSubmit={addListing} className="grid gap-3 p-4 bg-neutral-900 rounded-lg border border-neutral-800">
         <div className="text-lg font-semibold">List a Property</div>

@@ -1,4 +1,4 @@
-import { createUserNFT, mintUserNFT } from './hedera'
+import { createUserNFT, mintUserNFT, debugAccountSetup } from './hedera'
 
 // Test function to validate metadata size
 export function testMetadataSize(userName: string, userAddress: string) {
@@ -18,6 +18,24 @@ export function testMetadataSize(userName: string, userAddress: string) {
     size: metadataBytes.length,
     withinLimit: metadataBytes.length < 100
   }
+}
+
+// Test Hedera setup
+export async function testHederaSetup(): Promise<boolean> {
+  try {
+    console.log('Testing Hedera setup...')
+    await debugAccountSetup()
+    console.log('✅ Hedera setup test passed!')
+    return true
+  } catch (error) {
+    console.error('❌ Hedera setup test failed:', error)
+    return false
+  }
+}
+
+// Call this function in your component to test
+if (typeof window !== 'undefined') {
+  (window as any).testHederaSetup = testHederaSetup
 }
 
 // Test with various name lengths
