@@ -66,7 +66,7 @@ export default function Home({ userNFT, userAddress }: HomeProps) {
       
       const { hub } = getReadContracts()
       
-      // Debug: Check if contract exists
+      // Get contract listings
       const provider = hub.runner
       if (provider && 'getCode' in provider) {
         const contractCode = await (provider as any).getCode(await hub.getAddress())
@@ -191,60 +191,161 @@ export default function Home({ userNFT, userAddress }: HomeProps) {
   async function rent(id: bigint, deposit: bigint) {
     setBusy(true)
     try {
-      console.log('Starting rental process...')
+      console.log('=== RENTAL SIGNATURE PROCESS STARTED ===')
       console.log('Property ID:', id.toString())
-      console.log('Deposit required:', deposit.toString(), 'wei')
-      console.log('Deposit in HBAR:', weiToHbar(deposit))
+      console.log('User address:', userAddress)
       
-      // Check if user has enough balance
-      const { getProvider } = await import('../lib/eth')
-      const provider = getProvider()
-      const balance = await provider.getBalance(userAddress!)
-      console.log('User balance:', balance.toString(), 'wei')
-      console.log('User balance in HBAR:', weiToHbar(balance))
+      if (!userAddress) {
+        throw new Error('Please connect your wallet first')
+      }
+
+      // Find the property in our listings
+      const property = listings.find(l => l.id === id)
+      if (!property) {
+        throw new Error('Property not found')
+      }
+
+      console.log('Property found:', {
+        landlord: property.landlord,
+        active: property.active,
+        tenant: property.tenant,
+        monthlyRent: property.monthlyRent.toString(),
+        deposit: property.deposit.toString()
+      })
       
-      if (balance < deposit) {
-        throw new Error(`Insufficient balance. You have ${weiToHbar(balance)} HBAR but need ${weiToHbar(deposit)} HBAR`)
+      if (!property.active) {
+        throw new Error('Property is not active')
       }
       
-      const { hub } = await getWriteContracts()
-      console.log('Executing rent transaction...')
-      const tx = await hub.rent(id, { value: deposit })
-      console.log('Transaction submitted:', tx.hash)
-      await tx.wait()
-      console.log('Transaction confirmed')
+      if (property.tenant !== '0x0000000000000000000000000000000000000000') {
+        throw new Error('Property is already rented')
+      }
+
+      // Check if already rented via signature system
+      const { getTenantForProperty } = await import('../lib/mock-tenants')
+      const existingTenant = getTenantForProperty(id.toString())
+      if (existingTenant) {
+        throw new Error('Property is already rented via signature agreement')
+      }
       
-        // Record this as a payment in the trust system
-        if (userAddress) {
-          const { addPaymentRecord, getTrustData, initializeTrustData } = await import('../lib/trust-data')
-          
-          // Ensure user has trust data (initialize as tenant if needed)
-          let trustData = getTrustData(userAddress)
-          if (!trustData) {
-            trustData = initializeTrustData(userAddress, 'tenant')
-          }
-          
-          // Create payment record
-          const now = Date.now()
-          const paymentRecord = {
-            amount: deposit.toString(),
-            dueDate: now, // Immediate payment for initial rental
-            paidDate: now,
-            status: 'on-time' as const,
-            lateDays: 0,
-            propertyId: id.toString(),
-            transactionHash: tx.hash
-          }
-          
-          addPaymentRecord(userAddress, paymentRecord)
-        }
+      if (property.landlord.toLowerCase() === userAddress.toLowerCase()) {
+        throw new Error('You cannot rent your own property')
+      }
+      
+      // Create signature message for rental agreement  
+      const { getSigner } = await import('../lib/eth')
+      const signer = await getSigner()
+      
+      const rentalAgreement = {
+        propertyId: id.toString(),
+        landlord: property.landlord,
+        tenant: userAddress,
+        monthlyRent: property.monthlyRent.toString(),
+        deposit: property.deposit.toString(),
+        startDate: new Date().toISOString(),
+        agreementHash: `rental_${id}_${userAddress}_${Date.now()}`
+      }
+
+      const signatureMessage = `Rental Agreement Signature:
+
+Property ID: ${rentalAgreement.propertyId}
+Landlord: ${rentalAgreement.landlord}
+Tenant: ${rentalAgreement.tenant}
+Monthly Rent: ${weiToHbar(BigInt(rentalAgreement.monthlyRent))} HBAR
+Deposit: ${weiToHbar(BigInt(rentalAgreement.deposit))} HBAR
+Start Date: ${rentalAgreement.startDate}
+Agreement Hash: ${rentalAgreement.agreementHash}
+
+By signing this message, I agree to rent this property under the terms specified above.`
+      
+      console.log('📝 Requesting signature for rental agreement...')
+      const signature = await signer.signMessage(signatureMessage)
+      console.log('✅ Rental agreement signed!')
+      
+      // Store the rental agreement locally
+      console.log('📋 Recording rental agreement locally...')
+      const { addMockTenant } = await import('../lib/mock-tenants')
+      const { initializeTrustData } = await import('../lib/trust-data')
+      
+      addMockTenant({
+        propertyId: rentalAgreement.propertyId,
+        tenantAddress: rentalAgreement.tenant,
+        landlordAddress: rentalAgreement.landlord,
+        monthlyRent: rentalAgreement.monthlyRent,
+        deposit: rentalAgreement.deposit,
+        startDate: rentalAgreement.startDate,
+        signature: signature
+      })
+
+      // Initialize trust data for tenant if not exists
+      initializeTrustData(userAddress, 'tenant')
+      
+      console.log('✅ Rental agreement recorded locally for tenant management')
+      
+      // Import and use rental functions
+      const { updateRentalNFTMetadata, recordRentalHistory } = await import('../lib/rental-signatures')
+      
+      // Update NFT metadata for both parties
+      await updateRentalNFTMetadata(rentalAgreement, signature)
+      
+      // Record rental history in trust system
+      await recordRentalHistory(rentalAgreement, signature)
+      
+      console.log('📋 Rental agreement completed with signature verification')
       
       refresh()
-      alert('Property rented successfully! Payment recorded in your trust profile.')
+      alert('🎉 Rental agreement signed successfully! Property rented and both parties\' NFTs updated with rental history.')
     } catch (e: any) { 
       console.error('Error renting property:', e)
       alert('Failed to rent property: ' + (e.message || 'Unknown error'))
     } finally { setBusy(false) }
+  }
+
+  // Test function to create a mock rental for development
+  async function createTestRental() {
+    if (!userAddress || listings.length === 0) {
+      alert('Please connect wallet and ensure there are properties available')
+      return
+    }
+
+    // Find a property owned by someone else
+    const otherProperty = listings.find(l => 
+      l.landlord.toLowerCase() !== userAddress.toLowerCase() &&
+      l.active
+    )
+
+    if (!otherProperty) {
+      alert('No suitable property found for testing')
+      return
+    }
+
+    try {
+      const { addMockTenant } = await import('../lib/mock-tenants')
+      const { initializeTrustData } = await import('../lib/trust-data')
+      
+      // Create mock rental agreement
+      const testRental = {
+        propertyId: otherProperty.id.toString(),
+        tenantAddress: userAddress,
+        landlordAddress: otherProperty.landlord,
+        monthlyRent: otherProperty.monthlyRent.toString(),
+        deposit: otherProperty.deposit.toString(),
+        startDate: new Date().toISOString(),
+        signature: 'test_signature_' + Date.now()
+      }
+
+      // Add mock tenant
+      addMockTenant(testRental)
+
+      // Initialize trust data for tenant
+      initializeTrustData(userAddress, 'tenant')
+
+      refresh()
+      alert('✅ Test rental created! Check landlord dashboard to see tenant management features.')
+    } catch (error) {
+      console.error('Error creating test rental:', error)
+      alert('Failed to create test rental')
+    }
   }
 
   // Function to parse metadata URI

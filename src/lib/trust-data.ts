@@ -50,6 +50,11 @@ export function saveTrustData(trustData: ComprehensiveTrustData): void {
   }
 }
 
+// Update existing trust data
+export function updateTrustData(userAddress: string, updatedData: ComprehensiveTrustData): void {
+  saveTrustData(updatedData)
+}
+
 // Initialize trust data for a new user
 export function initializeTrustData(
   userAddress: string, 

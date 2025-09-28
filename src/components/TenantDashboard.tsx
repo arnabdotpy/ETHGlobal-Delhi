@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { getTenantForProperty } from '../lib/mock-tenants'
 
 interface TenantDashboardProps {
   userAddress: string
@@ -17,19 +18,29 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
     return hbar.toFixed(4)
   }
 
-  // Filter available properties for tenants
-  const availableProperties = listings.filter(l => 
-    l.active && 
-    l.tenant === '0x0000000000000000000000000000000000000000' &&
-    l.landlord.toLowerCase() !== userAddress?.toLowerCase()
+  // Show ALL properties with different filter options for tenants
+  const allProperties = listings.filter(l => 
+    l.landlord.toLowerCase() !== userAddress?.toLowerCase() // Don't show own properties
   )
 
-  const filteredProperties = availableProperties.filter(property => {
-    if (filterType === 'all') return true
-    if (filterType === 'available') return true // already filtered above
+  const filteredProperties = allProperties.filter(property => {
+    // Check if property is rented via signature-based system
+    const mockTenant = getTenantForProperty(property.id.toString())
+    const isRentedViaSignature = mockTenant !== null
+    const isRentedViaContract = property.tenant !== '0x0000000000000000000000000000000000000000'
+    const isRented = isRentedViaSignature || isRentedViaContract
+    const isAvailable = property.active && !isRented
+
+    // Apply filters based on selection
+    if (filterType === 'all') {
+      return true // Show all properties (available and rented)
+    }
+    if (filterType === 'available') {
+      return isAvailable
+    }
     if (filterType === 'affordable' && maxRent) {
-      const rentInEth = Number(property.monthlyRent) / 1e18
-      return rentInEth <= parseFloat(maxRent)
+      const rentInHbar = Number(property.monthlyRent) / 1e18
+      return isAvailable && rentInHbar <= parseFloat(maxRent)
     }
     return true
   })
@@ -37,7 +48,7 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Available Properties</h2>
+        <h2 className="text-xl font-bold">{filterType === 'all' ? 'All Properties' : filterType === 'available' ? 'Available Properties' : 'Affordable Properties'}</h2>
         <div className="flex items-center gap-3">
           <select
             value={filterType}
@@ -53,7 +64,7 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
             <input
               type="number"
               step="0.1"
-              placeholder="Max rent (ETH)"
+              placeholder="Max rent (HBAR)"
               value={maxRent}
               onChange={(e) => setMaxRent(e.target.value)}
               className="px-3 py-1 bg-neutral-800 border border-neutral-700 rounded text-sm w-32"
@@ -74,7 +85,14 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
         <div className="grid gap-4">
           {filteredProperties.map(property => {
             const metadata = parseMetadata(property.metadataURI)
-            const isAffordable = Number(property.monthlyRent) / 1e18 <= 2 // Consider under 2 ETH as affordable
+            const isAffordable = Number(property.monthlyRent) / 1e18 <= 100 // Consider under 100 HBAR as affordable
+            
+            // Check rental status (contract + signature-based)
+            const mockTenant = getTenantForProperty(property.id.toString())
+            const isRentedViaSignature = mockTenant !== null
+            const isRentedViaContract = property.tenant !== '0x0000000000000000000000000000000000000000'
+            const isRented = isRentedViaSignature || isRentedViaContract
+            const isAvailable = property.active && !isRented
             
             return (
               <div 
@@ -89,8 +107,24 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
                       <h3 className="font-semibold text-lg">
                         {metadata?.name || `Property #${property.id}`}
                       </h3>
-                      {isAffordable && (
+                      
+                      {/* Property Status */}
+                      {isAvailable ? (
                         <span className="px-2 py-1 bg-green-600/20 text-green-400 text-xs rounded">
+                          Available
+                        </span>
+                      ) : isRented ? (
+                        <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded">
+                          {isRentedViaSignature ? 'Rented (Signature)' : 'Rented'}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-yellow-600/20 text-yellow-400 text-xs rounded">
+                          Inactive
+                        </span>
+                      )}
+                      
+                      {isAffordable && isAvailable && (
+                        <span className="px-2 py-1 bg-blue-600/20 text-blue-400 text-xs rounded">
                           Affordable
                         </span>
                       )}
@@ -108,6 +142,9 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
                     
                     <div className="flex items-center gap-4 text-sm text-neutral-400">
                       <span>Owner: {property.landlord.slice(0,6)}...{property.landlord.slice(-4)}</span>
+                      {isRented && (
+                        <span>Tenant: {(isRentedViaSignature ? mockTenant?.tenantAddress : property.tenant)?.slice(0,6)}...{(isRentedViaSignature ? mockTenant?.tenantAddress : property.tenant)?.slice(-4)}</span>
+                      )}
                     </div>
                   </div>
                   
@@ -125,25 +162,41 @@ export default function TenantDashboard({ userAddress, listings, onRent, busy, p
                     <div>
                       <div className="text-xs text-neutral-400">Monthly Rent</div>
                       <div className="font-mono font-semibold">
-                        {weiToHbar(property.monthlyRent)} ETH
+                        {weiToHbar(property.monthlyRent)} HBAR
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-neutral-400">Security Deposit</div>
                       <div className="font-mono font-semibold">
-                        {weiToHbar(property.deposit)} ETH
+                        {weiToHbar(property.deposit)} HBAR
                       </div>
                     </div>
                   </div>
                   
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => onRent(property.id, property.deposit)}
-                      disabled={busy}
-                      className="px-4 py-2 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-                    >
-                      {busy ? 'Processing...' : 'Rent Property'}
-                    </button>
+                    {isAvailable ? (
+                      <button
+                        onClick={() => onRent(property.id, property.deposit)}
+                        disabled={busy}
+                        className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+                      >
+                        {busy ? 'Processing...' : 'Rent Property'}
+                      </button>
+                    ) : isRented ? (
+                      <button
+                        disabled
+                        className="px-4 py-2 bg-neutral-800 text-neutral-500 cursor-not-allowed rounded"
+                      >
+                        Already Rented
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="px-4 py-2 bg-neutral-800 text-neutral-500 cursor-not-allowed rounded"
+                      >
+                        Not Available
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

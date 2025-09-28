@@ -87,11 +87,36 @@ export interface LandlordTrustData {
   lastUpdated: number // timestamp
 }
 
+export interface RentalHistoryRecord {
+  tenantAddress?: string // For landlords
+  landlordAddress?: string // For tenants
+  propertyId: string
+  startDate: string
+  monthlyRent: string
+  deposit: string
+  status: 'active' | 'completed' | 'terminated'
+  signature: string
+  agreementHash: string
+}
+
+export interface CurrentRental {
+  landlordAddress?: string // For tenants
+  tenantAddress?: string // For landlords
+  propertyId: string
+  startDate: string
+  monthlyRent: string
+  deposit: string
+  signature: string
+  agreementHash: string
+}
+
 export interface ComprehensiveTrustData {
   userAddress: string
   userType: 'tenant' | 'landlord' | 'both'
   tenantData?: TenantTrustData
   landlordData?: LandlordTrustData
+  rentalHistory?: RentalHistoryRecord[]
+  currentRental?: CurrentRental
   createdAt: number // timestamp
   updatedAt: number // timestamp
 }

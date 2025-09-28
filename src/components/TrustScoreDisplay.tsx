@@ -276,6 +276,136 @@ export default function TrustScoreDisplay({ trustData }: TrustScoreDisplayProps)
             </div>
           </div>
         )}
+
+        {/* Rental History Section */}
+        <div className="border-t border-neutral-200 dark:border-neutral-800 p-6">
+          <h4 className="font-semibold mb-4 flex items-center gap-2">
+            <span>📋</span> 
+            {activeTab === 'landlord' ? 'Previous Tenants' : 'Rental History'}
+          </h4>
+          
+          {/* Current Rental */}
+          {trustData.currentRental && (
+            <div className="mb-6">
+              <h5 className="font-medium text-green-600 dark:text-green-400 mb-3">Current Rental</h5>
+              <div className="bg-green-50 dark:bg-green-500/10 rounded-xl p-4 border border-green-200 dark:border-green-500/20">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Property ID:</span>
+                    <span className="font-mono">{trustData.currentRental.propertyId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {activeTab === 'landlord' ? 'Tenant:' : 'Landlord:'}
+                    </span>
+                    <span className="font-mono text-xs">
+                      {activeTab === 'landlord' 
+                        ? `${trustData.currentRental.tenantAddress?.slice(0, 6)}...${trustData.currentRental.tenantAddress?.slice(-4)}`
+                        : `${trustData.currentRental.landlordAddress?.slice(0, 6)}...${trustData.currentRental.landlordAddress?.slice(-4)}`
+                      }
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Monthly Rent:</span>
+                    <span className="font-medium">{formatCurrency(trustData.currentRental.monthlyRent)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Start Date:</span>
+                    <span>{new Date(trustData.currentRental.startDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Deposit:</span>
+                    <span className="font-medium">{formatCurrency(trustData.currentRental.deposit)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Status:</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300 rounded-full text-xs font-medium">
+                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                      Active
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Rental History */}
+          {trustData.rentalHistory && trustData.rentalHistory.length > 0 ? (
+            <div>
+              <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-3">
+                {activeTab === 'landlord' ? 'Previous Tenants' : 'Previous Rentals'} ({trustData.rentalHistory.length})
+              </h5>
+              <div className="space-y-3">
+                {trustData.rentalHistory.slice(0, 5).map((record, index) => (
+                  <div key={index} className="bg-gray-50 dark:bg-neutral-800 rounded-lg p-4 border border-gray-200 dark:border-neutral-700">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400 text-xs mb-1">Property ID</div>
+                        <div className="font-mono text-xs">{record.propertyId}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400 text-xs mb-1">
+                          {activeTab === 'landlord' ? 'Tenant' : 'Landlord'}
+                        </div>
+                        <div className="font-mono text-xs">
+                          {activeTab === 'landlord' 
+                            ? `${record.tenantAddress?.slice(0, 6)}...${record.tenantAddress?.slice(-4)}`
+                            : `${record.landlordAddress?.slice(0, 6)}...${record.landlordAddress?.slice(-4)}`
+                          }
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400 text-xs mb-1">Start Date</div>
+                        <div className="text-xs">{new Date(record.startDate).toLocaleDateString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400 text-xs mb-1">Monthly Rent</div>
+                        <div className="font-medium text-xs">{formatCurrency(record.monthlyRent)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400 text-xs mb-1">Status</div>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          record.status === 'active' 
+                            ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300'
+                            : record.status === 'completed'
+                            ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'
+                            : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full ${
+                            record.status === 'active' ? 'bg-green-500' :
+                            record.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'
+                          }`}></span>
+                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400 text-xs mb-1">Signature</div>
+                        <div className="font-mono text-xs text-green-600 dark:text-green-400">
+                          ✓ Verified
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {trustData.rentalHistory.length > 5 && (
+                  <div className="text-center text-sm text-gray-500 dark:text-gray-400 pt-2">
+                    ... and {trustData.rentalHistory.length - 5} more rental{trustData.rentalHistory.length - 5 > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-4xl mb-2">🏠</div>
+              <div className="text-sm">
+                {activeTab === 'landlord' 
+                  ? 'No previous tenants yet. Complete your first rental to build your landlord reputation!'
+                  : 'No rental history yet. Complete your first rental to start building your tenant profile!'
+                }
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

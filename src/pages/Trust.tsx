@@ -4,8 +4,6 @@ import { getTrustData } from '../lib/trust-data'
 import { ComprehensiveTrustData } from '../lib/trust-types'
 import TrustScoreDisplay from '../components/TrustScoreDisplay'
 import TrustOnboarding from '../components/TrustOnboarding'
-import TrustDemoActions from '../components/TrustDemoActions'
-import HederaDebugPanel from '../components/HederaDebugPanel'
 import { getUserRole, UserRole } from '../lib/user-role'
 
 export default function Trust() {
@@ -85,16 +83,8 @@ export default function Trust() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
-      <HederaDebugPanel />
-      
       {trustData ? (
-        <>
-          <TrustScoreDisplay trustData={trustData} />
-          <TrustDemoActions 
-            userAddress={userAddress} 
-            onDataUpdated={loadTrustData}
-          />
-        </>
+        <TrustScoreDisplay trustData={trustData} />
       ) : userRole ? (
         /* User has role but no trust data - create it automatically */
         <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/20 p-8 text-center">
