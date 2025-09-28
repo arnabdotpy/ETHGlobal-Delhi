@@ -16,7 +16,7 @@ import {
 const MY_ACCOUNT_ID = AccountId.fromString(import.meta.env.VITE_HEDERA_ACCOUNT_ID || "0.0.6914602")
 
 // Try to parse the private key - it could be either ED25519 or ECDSA format
-let MY_PRIVATE_KEY: PrivateKey
+export let MY_PRIVATE_KEY: PrivateKey
 const privateKeyStr = import.meta.env.VITE_HEDERA_PRIVATE_KEY || "df36cca4c74d003cf80aae0b9ebc47247c4a608e7cfd296a6c4c9622fc4256c3"
 
 console.log('Parsing private key, length:', privateKeyStr.length)
@@ -46,7 +46,7 @@ try {
 
 let client: Client | null = null
 
-function getClient(): Client {
+export function getClient(): Client {
   if (!client) {
     client = Client.forTestnet()
     client.setOperator(MY_ACCOUNT_ID, MY_PRIVATE_KEY)
@@ -250,7 +250,7 @@ export async function createNFTToken(
 export async function mintUserNFT(
   tokenId: string,
   userAddress: string,
-  userName: string = "Briq User"
+  metadataString: string
 ): Promise<NFTMintResult> {
   const client = getClient()
   
@@ -258,15 +258,14 @@ export async function mintUserNFT(
     console.log('Starting NFT mint process...')
     console.log('Token ID:', tokenId)
     console.log('User Address:', userAddress)
-    console.log('User Name:', userName)
+    console.log('Metadata:', metadataString)
     console.log('Account ID:', MY_ACCOUNT_ID.toString())
     console.log('Private Key valid:', !!MY_PRIVATE_KEY)
 
-    // Create minimal metadata to avoid size issues
-    const minimalMetadata = userName.substring(0, 6) // Very small - just 6 chars
-    const metadataBytes = new TextEncoder().encode(minimalMetadata)
+    // Use provided metadata string
+    const metadataBytes = new TextEncoder().encode(metadataString)
     
-    console.log('Metadata:', minimalMetadata, 'Size:', metadataBytes.length, 'bytes')
+    console.log('Metadata size:', metadataBytes.length, 'bytes')
 
     // Create the mint transaction
     const txMint = new TokenMintTransaction()
@@ -330,19 +329,29 @@ export interface UserNFTData {
 }
 
 export async function getUserNFT(userAddress: string): Promise<UserNFTData | null> {
-  const storageKey = `briq_user_nft_${userAddress}`
-  const stored = localStorage.getItem(storageKey)
-  
-  if (stored) {
-    return JSON.parse(stored)
+  try {
+    // For now, we'll keep minimal localStorage reference to track which NFT belongs to which user
+    // In a full implementation, this would query the Hedera network for NFTs owned by the user
+    const storageKey = `briq_user_nft_${userAddress}`
+    const stored = localStorage.getItem(storageKey)
+    
+    if (stored) {
+      const nftData = JSON.parse(stored)
+      // Verify the NFT still exists on-chain by querying the network
+      // This is where you'd implement actual Hedera NFT ownership verification
+      return nftData
+    }
+    
+    return null
+  } catch (error) {
+    console.error('Error getting user NFT:', error)
+    return null
   }
-  
-  return null
 }
 
 export async function createUserNFT(userAddress: string, userName?: string): Promise<UserNFTData> {
   try {
-    console.log('Creating NFT for user:', userAddress, 'Name:', userName)
+    console.log('Creating NFT for user:', userAddress)
     
     // Debug account setup first
     await debugAccountSetup()
@@ -352,7 +361,7 @@ export async function createUserNFT(userAddress: string, userName?: string): Pro
     
     if (!nftTokenId) {
       console.log('Creating new NFT token collection...')
-      const tokenResult = await createNFTToken("Briq Users", "BRIQ") // Shorter names
+      const tokenResult = await createNFTToken("Briq Trust Profiles", "BRIQT")
       nftTokenId = tokenResult.tokenId
       localStorage.setItem('briq_nft_token_id', nftTokenId)
       console.log('Created NFT collection with token ID:', nftTokenId)
@@ -360,31 +369,36 @@ export async function createUserNFT(userAddress: string, userName?: string): Pro
       console.log('Using existing NFT collection:', nftTokenId)
     }
     
-    // Mint the NFT for the user
-    console.log('Minting NFT for user...')
-    const mintResult = await mintUserNFT(nftTokenId, userAddress, userName)
+    // Create initial minimal metadata for the NFT (stored on-chain)
+    const initialMetadata = {
+      user: userAddress.slice(0, 8),
+      created: new Date().toISOString().split('T')[0],
+      platform: "briq"
+    }
+    
+    const metadataString = JSON.stringify(initialMetadata)
+    console.log('Minting NFT with initial metadata:', metadataString)
+    
+    // Mint the NFT with minimal on-chain metadata
+    const mintResult = await mintUserNFT(nftTokenId, userAddress, metadataString)
     console.log('NFT minted successfully:', mintResult)
     
-    // Create user NFT data with full metadata for local storage
+    // Create user NFT data reference (minimal localStorage usage)
     const userNFTData: UserNFTData = {
       tokenId: mintResult.tokenId,
       serialNumber: mintResult.serialNumber,
       metadata: {
-        name: `${userName || 'Briq User'} Profile NFT`,
-        description: `Briq platform user profile NFT`,
+        name: `Briq Trust Profile ${userAddress.slice(0, 6)}`,
+        description: `On-chain trust profile for Briq platform user`,
         image: `https://api.dicebear.com/7.x/identicon/svg?seed=${userAddress}`,
-        attributes: [
-          { trait_type: "Platform", value: "Briq" },
-          { trait_type: "User Type", value: "Verified User" },
-          { trait_type: "Wallet", value: `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` },
-          { trait_type: "Created", value: new Date().toLocaleDateString() }
-        ]
+        external_url: `https://hashscan.io/testnet/token/${mintResult.tokenId}/${mintResult.serialNumber}`,
+        onChainMetadata: initialMetadata
       },
       transactionId: mintResult.transactionId,
       hashscanUrl: mintResult.hashscanUrl
     }
     
-    // Store in localStorage
+    // Store minimal reference (in production, this would be queried from the network)
     const storageKey = `briq_user_nft_${userAddress}`
     localStorage.setItem(storageKey, JSON.stringify(userNFTData))
     

@@ -13,7 +13,7 @@ export default function UserProfileNFT({ nftData, userAddress }: UserProfileNFTP
       <div className="flex items-center gap-4">
         <div className="relative">
           <img 
-            src={nftData.metadata.image} 
+            src={nftData.metadata?.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${userAddress}`} 
             alt="Profile NFT"
             className="w-16 h-16 rounded-lg border-2 border-indigo-400"
           />
@@ -24,11 +24,11 @@ export default function UserProfileNFT({ nftData, userAddress }: UserProfileNFTP
         
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-indigo-300">{nftData.metadata.name}</h3>
+            <h3 className="font-semibold text-indigo-300">{nftData.metadata?.name || `User ${userAddress.slice(0, 6)} NFT`}</h3>
             <span className="px-2 py-1 bg-indigo-600 text-xs rounded-full">Verified</span>
           </div>
           <p className="text-sm text-neutral-300 mb-2">
-            {nftData.metadata.description}
+            {nftData.metadata?.description || 'Briq platform user NFT'}
           </p>
           <div className="flex items-center gap-4 text-xs text-neutral-400">
             <span>Token: {nftData.tokenId}</span>
@@ -54,7 +54,8 @@ export default function UserProfileNFT({ nftData, userAddress }: UserProfileNFTP
       
       <div className="mt-4 pt-3 border-t border-neutral-700">
         <div className="flex flex-wrap gap-2">
-          {nftData.metadata.attributes.map((attr: any, index: number) => {
+          {nftData.metadata.attributes && nftData.metadata.attributes.length > 0 ? (
+            nftData.metadata.attributes.map((attr: any, index: number) => {
             // Special styling for trust scores
             const isTrustScore = attr.trait_type.includes('Trust Score')
             const isPercentage = attr.trait_type.includes('%') || attr.trait_type.includes('Percentage')
@@ -88,7 +89,12 @@ export default function UserProfileNFT({ nftData, userAddress }: UserProfileNFTP
                 </span>
               </div>
             )
-          })}
+            })
+          ) : (
+            <div className="text-sm text-neutral-500">
+              No additional attributes available
+            </div>
+          )}
         </div>
       </div>
     </div>
