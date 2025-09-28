@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.73.2",
+    "@selfxyz/core": "^1.0.8",
+    "@selfxyz/qrcode": "^1.0.15",
     "clsx": "^2.1.1",
     "ethers": "^6.13.2",
     "react": "^19.1.1",

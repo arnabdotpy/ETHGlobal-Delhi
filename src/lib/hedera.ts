@@ -326,6 +326,13 @@ export interface UserNFTData {
   metadata: any
   transactionId: string
   hashscanUrl: string
+  verification?: {
+    verified: boolean
+    timestamp?: number
+    nationality?: string
+    minimumAge?: boolean
+    ofacCheck?: boolean
+  }
 }
 
 export async function getUserNFT(userAddress: string): Promise<UserNFTData | null> {
@@ -416,6 +423,24 @@ export async function createUserNFT(userAddress: string, userName?: string): Pro
     } else {
       throw new Error(`NFT creation failed: ${error.message || 'Unknown error'}`)
     }
+  }
+}
+
+// Update user verification status
+export function updateUserVerification(userAddress: string, verificationData: any): void {
+  const storageKey = `briq_user_nft_${userAddress}`
+  const stored = localStorage.getItem(storageKey)
+  
+  if (stored) {
+    const userData: UserNFTData = JSON.parse(stored)
+    userData.verification = {
+      verified: true,
+      timestamp: Date.now(),
+      nationality: verificationData.nationality,
+      minimumAge: verificationData.minimumAge,
+      ofacCheck: verificationData.ofacCheck,
+    }
+    localStorage.setItem(storageKey, JSON.stringify(userData))
   }
 }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { createUserNFT, getUserNFT, UserNFTData } from '../lib/hedera'
+import { createUserNFT, getUserNFT, UserNFTData, updateUserVerification } from '../lib/hedera'
+import SelfVerification from './SelfVerification'
 
 interface NFTCreationProps {
   userAddress: string
@@ -11,6 +12,8 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
   const [error, setError] = useState<string | null>(null)
   const [userName, setUserName] = useState('')
   const [existingNFT, setExistingNFT] = useState<UserNFTData | null>(null)
+  const [currentStep, setCurrentStep] = useState<'verification' | 'nft-creation'>('verification')
+  const [verificationData, setVerificationData] = useState<any>(null)
 
   useEffect(() => {
     // Check if user already has an NFT
@@ -18,9 +21,24 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
       if (nft) {
         setExistingNFT(nft)
         onNFTCreated(nft)
+        // If user has NFT but no verification, start with verification
+        if (!nft.verification?.verified) {
+          setCurrentStep('verification')
+        }
       }
     }).catch(console.error)
   }, [userAddress, onNFTCreated])
+
+  const handleVerificationSuccess = (data: any) => {
+    console.log('Verification successful:', data)
+    setVerificationData(data)
+    setCurrentStep('nft-creation')
+  }
+
+  const handleSkipVerification = () => {
+    console.log('User skipped verification')
+    setCurrentStep('nft-creation')
+  }
 
   const handleCreateNFT = async () => {
     if (!userName.trim()) {
@@ -35,6 +53,19 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
       console.log('Starting NFT creation for:', userAddress)
       const nftData = await createUserNFT(userAddress, userName.trim())
       console.log('NFT created successfully:', nftData)
+      
+      // Add verification data if available
+      if (verificationData) {
+        updateUserVerification(userAddress, verificationData)
+        nftData.verification = {
+          verified: true,
+          timestamp: Date.now(),
+          nationality: verificationData.nationality,
+          minimumAge: verificationData.minimumAge,
+          ofacCheck: verificationData.ofacCheck,
+        }
+      }
+      
       setExistingNFT(nftData)
       onNFTCreated(nftData)
     } catch (error: any) {
@@ -79,6 +110,12 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
                 <div className="text-neutral-400">
                   Serial: #{existingNFT.serialNumber}
                 </div>
+                {existingNFT.verification?.verified && (
+                  <div className="mt-2 flex items-center gap-1 text-green-400">
+                    <span className="text-xs">🛡️</span>
+                    <span className="text-xs">Identity Verified</span>
+                  </div>
+                )}
               </div>
             </div>
             <a
@@ -95,6 +132,17 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
     )
   }
 
+  // Show verification step first
+  if (currentStep === 'verification') {
+    return (
+      <SelfVerification
+        userAddress={userAddress}
+        onVerificationSuccess={handleVerificationSuccess}
+        onSkip={handleSkipVerification}
+      />
+    )
+  }
+
   return (
     <div className="max-w-md mx-auto">
       <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-6">
@@ -104,6 +152,12 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
           <p className="text-neutral-300 text-sm">
             Welcome to Briq! Let's create your unique profile NFT on Hedera.
           </p>
+          {verificationData && (
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-green-900/20 border border-green-500 rounded-full text-green-400 text-sm">
+              <span>🛡️</span>
+              <span>Identity Verified</span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -126,6 +180,9 @@ export default function NFTCreation({ userAddress, onNFTCreated }: NFTCreationPr
               <li>• Verified user status</li>
               <li>• Wallet address verification</li>
               <li>• Platform membership proof</li>
+              {verificationData && (
+                <li className="text-green-400">• Identity verification badge 🛡️</li>
+              )}
             </ul>
           </div>
 
